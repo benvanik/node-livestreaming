@@ -1,0 +1,30 @@
+{
+  "name": "livestreaming",
+  "description": "HTTP Live Streaming segmenter and playlist generator",
+  "version": "0.0.1",
+  "author": "Ben Vanik <ben.vanik@gmail.com>",
+  "contributors": [],
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/benvanik/node-livestreaming.git"
+  },
+  "keywords": [
+    "http",
+    "streaming",
+    "media"
+  ],
+  "directories": {
+    "lib": "./lib/livestreaming"
+  },
+  "main": "./lib/livestreaming",
+  "dependencies": {
+  },
+  "scripts": {
+    "preinstall": "node-waf configure && node-waf build",
+    "preuninstall": "rm -rf build/*"
+  },
+  "engines": {
+    "node": ">= 0.6.x"
+  },
+  "devDependencies": {}
+}
