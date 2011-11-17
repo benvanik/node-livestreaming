@@ -24,14 +24,15 @@ Coming soon (maybe):
 
     npm install livestreaming
     node
-    > var segmenter = require('livestreaming').createSegmenter('file.ts', 10);
+    > var segmenter = require('livestreaming').createSegmenter();
+    > segmenter.addSource('file.ts');
     > segmenter.on('segment', function(segment) {
         // A segment has been added/manifest is updated
       });
     > segmenter.on('end', function() {
         // Done!
       });
-    > segmenter.segmentToPath('stream/', 'manifest.m3u8', 'prefix-');
+    > segmenter.segmentToPath('stream/', 'name');
 
 ## Installation
 
@@ -82,3 +83,114 @@ You may also need to add the MacPorts paths to your `~./profile`:
 ## API
 
 ### Segmenting Transport Streams
+
+Create a segmenter with the factory method. You can optionally pass in an
+options object that allows you to override the defaults:
+
+    var segmenter = livestreaming.createSegmenter({
+      // Enable clients to cache the segments
+      allowCaching: true,
+      // Whether the output is getting streamed or being processed offline
+      streaming: false,
+      // Segment duration, in seconds
+      duration: 10
+    });
+
+Add a source stream to the segmenter. Currently this must be a file. It must
+contain a video stream, and can optionally contain an audio stream.
+
+    segmenter.addSource('file.ts', {
+      // Bitrate (bits/sec) of the combined stream
+      bitrate: 7680000,
+      // Codecs used in the stream
+      codecs: ['avc1.4d001e', 'mp4a.40.5']
+    });
+
+Add an audio stream to the segmenter. Use this when adding additional audio
+sources (such as alternate languages).
+
+    segmenter.addAudioSource('english.ts', {
+      // Bitrate (bits/sec)
+      bitrate: 65000,
+      // Codecs used in the stream
+      codecs: ['mp4a.40.5'],
+      // Name of the stream (used in the client UI)
+      name: 'English',
+      // Language of the audio
+      language: 'en',
+      // Whether the audio stream should be used by default
+      default: true,
+      // Whether the client should autoselect this if the language matches
+      autoselect: true
+    });
+
+When all input is setup, begin the segmenting process. All files will be placed
+in the given path as they are generated. The names will be based on the given
+base name.
+
+    segmenter.segmentToPath('path/', 'name');
+
+#### Events
+
+##### Event: `segment`
+
+Emitted when a segment has been generated and the manifest file has been
+updated.
+
+    segmenter.on('segment', function(segment) {
+      // segment = 'path/name.0.ts'
+    });
+
+##### Event: `error`
+
+Emitted when an error occurs during segmenting.
+
+    segmenter.on('error', function(err) {
+      //
+    });
+
+##### Event: `end`
+
+Emitted when segmenting has completed.
+
+    segmenter.on('end', function() {
+      //
+    });
+
+#### Example
+
+    var segmenter = require('livestreaming').createSegmenter();
+    segmenter.addSource('video.ts');
+    segmenter.addAudioSource('audio-en.ts', {
+      name: 'English',
+      language: 'en',
+      default: true,
+      autoselect: true
+    });
+    segmenter.addAudioSource('audio-de.ts', {
+      name: 'Deutsche',
+      language: 'de',
+      default: false,
+      autoselect: true
+    });
+    segmenter.on('end', function(segment) {
+      console.log('segment: ' + segment);
+    });
+    segmenter.on('end', function() {
+      console.log('completed!');
+    });
+    segmenter.segmentToPath('path/', 'name');
+
+    // Produces:
+    // path/name.m3u8
+    //     /name.0.ts
+    //     /name.1.ts
+    //     /...
+    //     /name.audio.en.m3u8
+    //     /name.audio.en.0.ts
+    //     /name.audio.en.1.ts
+    //     /...
+    //     /name.audio.de.m3u8
+    //     /name.audio.de.0.ts
+    //     /name.audio.de.1.ts
+    //     /...

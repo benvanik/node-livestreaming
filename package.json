@@ -17,7 +17,11 @@
     "lib": "./lib/livestreaming"
   },
   "main": "./lib/livestreaming",
+  "bin": {
+    "segmenter" : "./examples/segmenter.js"
+  },
   "dependencies": {
+    "tav": "0.1.0"
   },
   "scripts": {
     "preinstall": "node-waf configure && node-waf build",
