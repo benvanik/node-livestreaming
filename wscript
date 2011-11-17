@@ -3,8 +3,12 @@ import os
 
 import json
 package = json.load(open('package.json'))
-APPNAME = 'node_' + package['name']
+NAME = package['name']
+APPNAME = 'node-' + NAME
 VERSION = package['version']
+
+srcdir = 'src'
+blddir = 'build'
 
 def set_options(opt):
   opt.tool_options('compiler_cxx')
@@ -21,7 +25,7 @@ def configure(conf):
 
 def build(bld):
   obj = bld.new_task_gen('cxx', 'shlib', 'node_addon')
-  obj.target = 'binding'
+  obj.target = 'livestreaming'
   obj.cxxflags = []
   obj.uselib = ['LIBAVUTIL', 'LIBAVFORMAT', 'LIBAVCODEC']
   obj.source = [
