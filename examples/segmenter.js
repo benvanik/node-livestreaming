@@ -1,33 +1,44 @@
 #!/usr/bin/env node
 
+var fs = require('fs');
 var livestreaming = require('livestreaming');
+var path = require('path');
 
 var opts = require('tav').set({
   duration: {
     note: 'Segment duration (seconds)',
     value: 10
-  },
-  output_path: {
-    note: 'Output path',
-    value: '.'
-  },
-  output_name: {
-    note: 'Output name',
-    value: 'output'
   }
 });
+
+if (opts.args.length < 1) {
+  console.log('no input file specified');
+  return;
+}
+if (opts.args.length < 2) {
+  console.log('no output path specified');
+  return;
+}
+
+var inputFile = path.normalize(opts.args[0]);
+if (!path.existsSync(inputFile)) {
+  console.log('input file not found');
+  return;
+}
+
+var outputPath = path.normalize(opts.args[1]);
+if (!path.existsSync(outputPath)) {
+  fs.mkdirSync(outputPath);
+}
+var outputName = path.basename(inputFile, path.extname(inputFile));
+var outputFile = path.normalize(path.join(outputPath, outputName + '.m3u8'));
 
 var segmenter = livestreaming.createSegmenter({
   duration: parseInt(opts['duration'])
 });
 
-for (var n = 0; n < opts.args.length; n++) {
-  var arg = opts.args[n];
-  segmenter.addSource(arg);
-}
-
 segmenter.on('segment', function(segment) {
-  console.log('segment: ' + segment);
+  console.log('- segment: ' + segment);
 });
 
 segmenter.on('end', function() {
@@ -35,4 +46,7 @@ segmenter.on('end', function() {
   process.exit();
 });
 
-segmenter.segmentToPath(opts['output_path'], opts['output_name']);
+console.log('segmenting input ' + inputFile + ' to ' + outputFile);
+
+segmenter.addSource(inputFile);
+segmenter.segmentToPath(outputPath, outputName);

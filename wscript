@@ -30,4 +30,5 @@ def build(bld):
   obj.uselib = ['LIBAVUTIL', 'LIBAVFORMAT', 'LIBAVCODEC']
   obj.source = [
     'src/binding.cpp',
+    'src/segmentercontext.cpp'
   ]
