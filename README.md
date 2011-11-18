@@ -1,5 +1,4 @@
-node-livestreaming -- HTTP Live Streaming segmenter and manifest support for
-node.js
+node-livestreaming -- HTTP Live Streaming segmenter for node.js
 ====================================
 
 node-livestreaming is a library that targets the [HTTP Live Streaming](
