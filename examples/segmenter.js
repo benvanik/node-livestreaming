@@ -37,8 +37,8 @@ var segmenter = livestreaming.createSegmenter(inputFile, {
   duration: parseInt(opts['duration'])
 });
 
-segmenter.on('segment', function(segment) {
-  console.log('- segment: ' + segment);
+segmenter.on('segment', function(id, path) {
+  console.log('- segment(' + id + '): ' + path);
 });
 
 segmenter.on('error', function(err) {

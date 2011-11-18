@@ -1,3 +1,23 @@
+/*
+ * Basic flow:
+ * PrepareTask():
+ * - Open input
+ * - Read input info
+ * - Create output
+ *   - Determine and add streams
+ * - Create decoder
+ * - PumpTask()
+ * PumpTask():
+ * - For each frame from decoder
+ *   - Read frame
+ *   - If frame timestamp over duration, allocate a new segment
+ *     - Emit segment to js
+ *   - Write frame to current segment
+ * - If done, CompleteTask(), else PumpTask()
+ * CompleteTask():
+ * - Cleanup
+ */
+
 #include "segmentercontext.h"
 
 extern "C" {
@@ -35,75 +55,135 @@ Handle<Value> SegmenterContext::New(const Arguments& args)
 
 SegmenterContext::SegmenterContext(Handle<Object> target,
     Handle<Object> options) :
-    executeCompleted(false) {
+    taskCompleted(false), taskAborted(false) {
   HandleScope scope;
 
-  this->target = Persistent<Object>(target);
-  this->options = Persistent<Object>(options);
+  this->target = Persistent<Object>::New(target);
+  this->options = Persistent<Object>::New(options);
+
+  this->segmentFunc = Persistent<Function>::New(
+      target->Get(String::New("emitSegment_")).As<Function>());
+  this->finishedFunc = Persistent<Function>::New(
+      target->Get(String::New("emitFinished_")).As<Function>());
 }
 
 SegmenterContext::~SegmenterContext() {
 }
 
-static uv_async_t async1_handle;
-static int async1_closed = 0;
+#define LS_TASK_DISPATCH(context, name) \
+  do { \
+    uv_async_t* handle_##name = new uv_async_t; \
+    handle_##name->data = context; \
+    context->Ref(); \
+    uv_async_init(uv_default_loop(), handle_##name, name); \
+    uv_async_send(handle_##name); \
+  } while(0);
 
 Handle<Value> SegmenterContext::Execute(const Arguments& args) {
   HandleScope scope;
   SegmenterContext* context = ObjectWrap::Unwrap<SegmenterContext>(args.This());
 
-  //
-  context->executeHandle.data = context;
-  uv_async_init(uv_default_loop(),
-      &context->executeHandle, ExecuteCallback);
-
-  uv_async_send(&context->executeHandle);
+  // Kickoff preparation stage
+  context->taskCompleted = false;
+  context->taskAborted = false;
+  LS_TASK_DISPATCH(context, PrepareTask);
 
   return scope.Close(Undefined());
-}
-
-void SegmenterContext::ExecuteCallback(uv_async_t* handle, int status) {
-  assert(status == 0);
-
-  SegmenterContext* context = static_cast<SegmenterContext*>(handle->data);
-  if (context->executeCompleted) {
-    // May happen - sometimes the callback will be called twice...
-    return;
-  }
-
-  context->PrepareInput();
-
-  context->executeCompleted = true;
-  uv_close((uv_handle_t*)handle, ExecuteHandleClose);
-}
-
-void SegmenterContext::ExecuteHandleClose(uv_handle_t* handle) {
-  printf("handle cleanup %p\n", handle->data);
-  handle->data = NULL;
 }
 
 Handle<Value> SegmenterContext::Abort(const Arguments& args) {
   HandleScope scope;
   SegmenterContext* context = ObjectWrap::Unwrap<SegmenterContext>(args.This());
 
-  //
-  if (!context->executeCompleted) {
-    //uv_async_send(&context->executeHandle);
+  if (!context->taskCompleted) {
+    context->taskAborted = true;
   }
 
   return scope.Close(Undefined());
 }
 
-Handle<String> SegmenterContext::ErrorToString(int errnum) {
-  HandleScope scope;
-  char buffer[256];
-  if (av_strerror(errnum, buffer, sizeof(buffer)) == 0) {
-    return scope.Close(String::New(buffer));
-  } else {
-    return scope.Close(String::New("Unknown error"));
+void SegmenterContext::PrepareTask(uv_async_t* handle, int status) {
+  assert(status == 0);
+  SegmenterContext* context = static_cast<SegmenterContext*>(handle->data);
+  if (context->taskCompleted) {
+    uv_close((uv_handle_t*)handle, TaskHandleClose);
+    return;
   }
+  if (context->taskAborted) {
+    // TODO: abort
+  }
+
+  // TODO: open everything
+  printf("prepare!\n");
+
+  // Start first pump (will loop until done)
+  LS_TASK_DISPATCH(context, PumpTask);
+
+  uv_close((uv_handle_t*)handle, TaskHandleClose);
 }
 
+void SegmenterContext::PumpTask(uv_async_t* handle, int status) {
+  assert(status == 0);
+  SegmenterContext* context = static_cast<SegmenterContext*>(handle->data);
+  if (context->taskCompleted) {
+    uv_close((uv_handle_t*)handle, TaskHandleClose);
+    return;
+  }
+
+  bool taskDone = false;
+
+  // TODO: main loop (for a bit)
+  do {
+    if (context->taskAborted) {
+      // TODO: abort
+    }
+
+    // Issue a segmentCompleted_ on the target
+    context->segmentFunc->Call(context->target, 0, NULL);
+
+    //
+    printf("pump!\n");
+    taskDone = true;
+
+    break;
+  } while(true);
+
+  if (taskDone) {
+    // Completed
+    LS_TASK_DISPATCH(context, CompleteTask);
+  } else {
+    // Not done - keep pumping
+    LS_TASK_DISPATCH(context, PumpTask);
+  }
+
+  uv_close((uv_handle_t*)handle, TaskHandleClose);
+}
+
+void SegmenterContext::CompleteTask(uv_async_t* handle, int status) {
+  assert(status == 0);
+  SegmenterContext* context = static_cast<SegmenterContext*>(handle->data);
+  if (context->taskCompleted) {
+    uv_close((uv_handle_t*)handle, TaskHandleClose);
+    return;
+  }
+
+  // TODO: close off everything
+  printf("complete!\n");
+
+  // Issue finished_ on the target object
+  context->finishedFunc->Call(context->target, 0, NULL);
+
+  context->taskCompleted = true;
+  uv_close((uv_handle_t*)handle, TaskHandleClose);
+}
+
+void SegmenterContext::TaskHandleClose(uv_handle_t* handle) {
+  SegmenterContext* context = static_cast<SegmenterContext*>(handle->data);
+  context->Unref();
+  handle->data = NULL;
+}
+
+/*
 int SegmenterContext::PrepareInput() {
   int ret = 0;
   AVFormatContext* ctx = NULL;
@@ -153,4 +233,14 @@ CLEANUP:
   }
   return ret;
 }
+*/
 
+Handle<String> SegmenterContext::ErrorToString(int errnum) {
+  HandleScope scope;
+  char buffer[256];
+  if (av_strerror(errnum, buffer, sizeof(buffer)) == 0) {
+    return scope.Close(String::New(buffer));
+  } else {
+    return scope.Close(String::New("Unknown error"));
+  }
+}

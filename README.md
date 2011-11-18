@@ -104,8 +104,9 @@ base name.
 Emitted when a segment has been generated and the manifest file has been
 updated.
 
-    segmenter.on('segment', function(segment) {
-      // segment = 'path/name.0.ts'
+    segmenter.on('segment', function(id, path) {
+      // id = 123
+      // path = 'path/name.123.ts'
     });
 
 ##### Event: `error`
