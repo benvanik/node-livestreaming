@@ -6,7 +6,13 @@
 
 namespace livestreaming {
 
-//
+#ifndef countof
+#ifdef _countof
+#define countof _countof
+#else
+#define countof(a) (sizeof(a) / sizeof(*(a)))
+#endif
+#endif
 
 }; // livestreaming
 

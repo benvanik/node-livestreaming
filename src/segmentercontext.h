@@ -33,6 +33,12 @@ private:
   Persistent<Object>    target;
   Persistent<Object>    options;
 
+  Persistent<String>    sourcePath;
+  Persistent<String>    outputPath;
+  Persistent<String>    outputName;
+
+  double                segmentDuration;
+
   Persistent<Function>  segmentFunc;
   Persistent<Function>  finishedFunc;
 

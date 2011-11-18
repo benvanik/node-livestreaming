@@ -61,6 +61,20 @@ SegmenterContext::SegmenterContext(Handle<Object> target,
   this->target = Persistent<Object>::New(target);
   this->options = Persistent<Object>::New(options);
 
+  // Grab paths
+  this->sourcePath = Persistent<String>::New(
+      options->Get(String::New("sourcePath")).As<String>());
+  this->outputPath = Persistent<String>::New(
+      options->Get(String::New("outputPath")).As<String>());
+  this->outputName = Persistent<String>::New(
+      options->Get(String::New("outputName")).As<String>());
+
+  // Grab options
+  Local<Object> appOptions =
+      options->Get(String::New("options")).As<Object>();
+  this->segmentDuration =
+      appOptions->Get(String::New("duration")).As<Number>()->Value();
+
   this->segmentFunc = Persistent<Function>::New(
       target->Get(String::New("emitSegment_")).As<Function>());
   this->finishedFunc = Persistent<Function>::New(
@@ -103,6 +117,7 @@ Handle<Value> SegmenterContext::Abort(const Arguments& args) {
 }
 
 void SegmenterContext::PrepareTask(uv_async_t* handle, int status) {
+  HandleScope scope;
   assert(status == 0);
   SegmenterContext* context = static_cast<SegmenterContext*>(handle->data);
   if (context->taskCompleted) {
@@ -113,8 +128,13 @@ void SegmenterContext::PrepareTask(uv_async_t* handle, int status) {
     // TODO: abort
   }
 
-  // TODO: open everything
-  printf("prepare!\n");
+  // TODO: open everything!
+  String::AsciiValue asciiSourcePath(context->sourcePath);
+  String::AsciiValue asciiOutputPath(context->outputPath);
+  String::AsciiValue asciiOutputName(context->outputName);
+  printf("prepare! %g %s %s %s\n",
+      context->segmentDuration,
+      *asciiSourcePath, *asciiOutputPath, *asciiOutputName);
 
   // Start first pump (will loop until done)
   LS_TASK_DISPATCH(context, PumpTask);
@@ -123,6 +143,7 @@ void SegmenterContext::PrepareTask(uv_async_t* handle, int status) {
 }
 
 void SegmenterContext::PumpTask(uv_async_t* handle, int status) {
+  HandleScope scope;
   assert(status == 0);
   SegmenterContext* context = static_cast<SegmenterContext*>(handle->data);
   if (context->taskCompleted) {
@@ -139,7 +160,11 @@ void SegmenterContext::PumpTask(uv_async_t* handle, int status) {
     }
 
     // Issue a segmentCompleted_ on the target
-    context->segmentFunc->Call(context->target, 0, NULL);
+    Handle<Value> args[] = {
+      Integer::New(123),
+      String::New("123.ts"),
+    };
+    context->segmentFunc->Call(context->target, countof(args), args);
 
     //
     printf("pump!\n");
@@ -160,6 +185,7 @@ void SegmenterContext::PumpTask(uv_async_t* handle, int status) {
 }
 
 void SegmenterContext::CompleteTask(uv_async_t* handle, int status) {
+  HandleScope scope;
   assert(status == 0);
   SegmenterContext* context = static_cast<SegmenterContext*>(handle->data);
   if (context->taskCompleted) {
