@@ -1,9 +1,14 @@
 #include "segmentercontext.h"
 
+extern "C" {
+#include "libavformat/avformat.h"
+}
+
+using namespace livestreaming;
 using namespace v8;
 
 static Persistent<FunctionTemplate> SegmenterContext_ctor;
-void livestreaming::SegmenterContext::Init(Handle<Object> target) {
+void SegmenterContext::Init(Handle<Object> target) {
   HandleScope scope;
 
   Local<FunctionTemplate> ctor = FunctionTemplate::New(New);
@@ -18,7 +23,7 @@ void livestreaming::SegmenterContext::Init(Handle<Object> target) {
       SegmenterContext_ctor->GetFunction());
 }
 
-Handle<Value> livestreaming::SegmenterContext::New(const Arguments& args)
+Handle<Value> SegmenterContext::New(const Arguments& args)
 {
   HandleScope scope;
   Local<Object> target = args[0]->ToObject();
@@ -28,53 +33,124 @@ Handle<Value> livestreaming::SegmenterContext::New(const Arguments& args)
   return args.This();
 }
 
-livestreaming::SegmenterContext::SegmenterContext(Handle<Object> target,
-    Handle<Object> options) {
+SegmenterContext::SegmenterContext(Handle<Object> target,
+    Handle<Object> options) :
+    executeCompleted(false) {
   HandleScope scope;
 
   this->target = Persistent<Object>(target);
   this->options = Persistent<Object>(options);
 }
 
-livestreaming::SegmenterContext::~SegmenterContext() {
+SegmenterContext::~SegmenterContext() {
 }
 
 static uv_async_t async1_handle;
 static int async1_closed = 0;
-static void close_cb(uv_handle_t* handle) {
-  printf("handle cleanup %p\n", handle->data);
-  handle->data = NULL;
+
+Handle<Value> SegmenterContext::Execute(const Arguments& args) {
+  HandleScope scope;
+  SegmenterContext* context = ObjectWrap::Unwrap<SegmenterContext>(args.This());
+
+  //
+  context->executeHandle.data = context;
+  uv_async_init(uv_default_loop(),
+      &context->executeHandle, ExecuteCallback);
+
+  uv_async_send(&context->executeHandle);
+
+  return scope.Close(Undefined());
 }
-static void async1_cb(uv_async_t* handle, int status) {
-  //ASSERT(status == 0);
-  if (async1_closed) {
+
+void SegmenterContext::ExecuteCallback(uv_async_t* handle, int status) {
+  assert(status == 0);
+
+  SegmenterContext* context = static_cast<SegmenterContext*>(handle->data);
+  if (context->executeCompleted) {
+    // May happen - sometimes the callback will be called twice...
     return;
   }
 
-  printf("data: %p\n", handle->data);
-  printf("async1_cb #%d\n", async1_cb_called);
+  context->PrepareInput();
 
-  async1_closed = 1;
-  uv_close((uv_handle_t*)handle, close_cb);
+  context->executeCompleted = true;
+  uv_close((uv_handle_t*)handle, ExecuteHandleClose);
 }
 
-Handle<Value> livestreaming::SegmenterContext::Execute(const Arguments& args) {
+void SegmenterContext::ExecuteHandleClose(uv_handle_t* handle) {
+  printf("handle cleanup %p\n", handle->data);
+  handle->data = NULL;
+}
+
+Handle<Value> SegmenterContext::Abort(const Arguments& args) {
   HandleScope scope;
   SegmenterContext* context = ObjectWrap::Unwrap<SegmenterContext>(args.This());
 
   //
-  async1_handle.data = (void*)123;
-  int r = uv_async_init(uv_default_loop(), &async1_handle, async1_cb);
+  if (!context->executeCompleted) {
+    //uv_async_send(&context->executeHandle);
+  }
 
   return scope.Close(Undefined());
 }
 
-Handle<Value> livestreaming::SegmenterContext::Abort(const Arguments& args) {
+Handle<String> SegmenterContext::ErrorToString(int errnum) {
   HandleScope scope;
-  SegmenterContext* context = ObjectWrap::Unwrap<SegmenterContext>(args.This());
+  char buffer[256];
+  if (av_strerror(errnum, buffer, sizeof(buffer)) == 0) {
+    return scope.Close(String::New(buffer));
+  } else {
+    return scope.Close(String::New("Unknown error"));
+  }
+}
+
+int SegmenterContext::PrepareInput() {
+  int ret = 0;
+  AVFormatContext* ctx = NULL;
+  AVFormatContext* octx = NULL;
+
+  double secs;
+  int bitrate;
+
+  const char* inputPath = "/Users/noxa/test_videos/test.m4v";
+
+  av_register_all();
+
+  ctx = avformat_alloc_context();
+  if (!ctx) {
+    ret = AVERROR_NOMEM;
+    goto CLEANUP;
+  }
+
+  ret = avformat_open_input(&ctx, inputPath, NULL, NULL);
+  if (ret != 0) {
+    goto CLEANUP;
+  }
+
+  ret = av_find_stream_info(ctx);
+  if (ret != 0) {
+    goto CLEANUP;
+  }
 
   //
-  uv_async_send(&async1_handle);
+  printf("Hello!\n");
 
-  return scope.Close(Undefined());
+  av_dump_format(ctx, 0, NULL, 0);
+
+  secs = ctx->duration / (double)AV_TIME_BASE;
+  bitrate = ctx->bit_rate;
+  printf("duration: %g, bitrate: %d\n", secs, bitrate);
+
+  ret = 0;
+CLEANUP:
+  if (ctx) {
+    avformat_free_context(ctx);
+  }
+  if (ret) {
+    char buffer[256];
+    av_strerror(ret, buffer, sizeof(buffer));
+    printf("err %d: %s\b", ret, buffer);
+  }
+  return ret;
 }
+

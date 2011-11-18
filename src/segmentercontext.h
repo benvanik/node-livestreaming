@@ -22,9 +22,19 @@ private:
   static Handle<Value> Execute(const Arguments& args);
   static Handle<Value> Abort(const Arguments& args);
 
+  static void ExecuteCallback(uv_async_t* handle, int status);
+  static void ExecuteHandleClose(uv_handle_t* handle);
+
+  Handle<String> ErrorToString(int errnum);
+
+  int PrepareInput();
+
 private:
-  Persistent<Object> target;
-  Persistent<Object> options;
+  Persistent<Object>  target;
+  Persistent<Object>  options;
+
+  uv_async_t          executeHandle;
+  bool                executeCompleted;
 };
 
 }; // livestreaming

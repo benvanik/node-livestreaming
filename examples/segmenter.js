@@ -33,7 +33,7 @@ if (!path.existsSync(outputPath)) {
 var outputName = path.basename(inputFile, path.extname(inputFile));
 var outputFile = path.normalize(path.join(outputPath, outputName + '.m3u8'));
 
-var segmenter = livestreaming.createSegmenter({
+var segmenter = livestreaming.createSegmenter(inputFile, {
   duration: parseInt(opts['duration'])
 });
 
@@ -41,12 +41,16 @@ segmenter.on('segment', function(segment) {
   console.log('- segment: ' + segment);
 });
 
+segmenter.on('error', function(err) {
+  console.log('- error: ', err);
+});
+
 segmenter.on('end', function() {
-  console.log('completed!');
-  process.exit();
+  console.log('- ended');
 });
 
 console.log('segmenting input ' + inputFile + ' to ' + outputFile);
 
-segmenter.addSource(inputFile);
-segmenter.segmentToPath(outputPath, outputName);
+segmenter.segmentToPath(outputPath, outputName, function(err) {
+  console.log('completed! err: ', err);
+});
