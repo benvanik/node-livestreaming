@@ -39,11 +39,32 @@ livestreaming::SegmenterContext::SegmenterContext(Handle<Object> target,
 livestreaming::SegmenterContext::~SegmenterContext() {
 }
 
+static uv_async_t async1_handle;
+static int async1_closed = 0;
+static void close_cb(uv_handle_t* handle) {
+  printf("handle cleanup %p\n", handle->data);
+  handle->data = NULL;
+}
+static void async1_cb(uv_async_t* handle, int status) {
+  //ASSERT(status == 0);
+  if (async1_closed) {
+    return;
+  }
+
+  printf("data: %p\n", handle->data);
+  printf("async1_cb #%d\n", async1_cb_called);
+
+  async1_closed = 1;
+  uv_close((uv_handle_t*)handle, close_cb);
+}
+
 Handle<Value> livestreaming::SegmenterContext::Execute(const Arguments& args) {
   HandleScope scope;
   SegmenterContext* context = ObjectWrap::Unwrap<SegmenterContext>(args.This());
 
   //
+  async1_handle.data = (void*)123;
+  int r = uv_async_init(uv_default_loop(), &async1_handle, async1_cb);
 
   return scope.Close(Undefined());
 }
@@ -53,6 +74,7 @@ Handle<Value> livestreaming::SegmenterContext::Abort(const Arguments& args) {
   SegmenterContext* context = ObjectWrap::Unwrap<SegmenterContext>(args.This());
 
   //
+  uv_async_send(&async1_handle);
 
   return scope.Close(Undefined());
 }
